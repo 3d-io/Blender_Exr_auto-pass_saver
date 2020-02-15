@@ -1,11 +1,11 @@
 bl_info = {
     "name": "Exr Auto Pass Saver",
-    "description": "Link all render passes to a new EXR-mulitlayer save node",
+    "description": "Link all render passes to a new EXR-MulitLayer save node",
     "blender": (2, 80, 0),
     "category": "Compositing",
     "author": "3d-io",
     "version": (1, 0),
-    "location": "Compositor Tab > Sidebar > Exr Auto Save Pass Saver",
+    "location": "Compositor Tab > Sidebar > Exr Auto Pass Saver",
     "warning": "BSD",
     "wiki_url": "https://github.com/3d-io/",
     "support": "COMMUNITY",
@@ -21,7 +21,6 @@ bpy.types.Scene.exr_auto_pass_saver_clear_all = bpy.props.BoolProperty(
         default = False)
 
 
-
 bpy.types.Scene.exr_auto_pass_saver_open_dir = bpy.props.BoolProperty(
     name="Open destination folder",
         description="A folder where the Exr Image is going to be saved",
@@ -33,15 +32,21 @@ class Exr_Auto_Pass_Saver(bpy.types.Operator):
     bl_label = "Exr Auto Saver"
     bl_options = {'REGISTER', 'UNDO'}
 
+
+    # removes all currently existing nodes
     def cleannodes(self):
         nodesField = bpy.context.scene.node_tree
         for currentNode in nodesField.nodes:
             nodesField.nodes.remove(currentNode)
-    
-    def openfolder(self):
-        mypath = bpy.data.scenes["Scene"].render.filepath
-        subprocess.call("explorer " + mypath, shell=True)
 
+
+    # opens the directory of the current render path
+    def openfolder(self):
+        path = bpy.data.scenes["Scene"].render.filepath
+        subprocess.call("explorer " + path, shell=True)
+
+
+    # returns a target render path taken from the scene's render output and cleaned up as needed
     def GetOutputPathStr(self):
         defaultPath = bpy.context.scene.render.filepath
         dirname = os.path.dirname(defaultPath)
@@ -53,62 +58,67 @@ class Exr_Auto_Pass_Saver(bpy.types.Operator):
         fullPath = dirname + fileName
         return fullPath
 
+
+    # creates a new Render Layers node at the given position
+    def CreateNodeRenderLayers(self, position):
+        node = bpy.context.scene.node_tree.nodes.new('CompositorNodeRLayers')
+        node.location = position
+        return node
+
+
+    # creates a new Output File node at the given position
+    def CreateNodeFileOutput(self, position):
+        bpy.context.scene.render.image_settings.file_format = 'OPEN_EXR_MULTILAYER'
+        node = bpy.context.scene.node_tree.nodes.new("CompositorNodeOutputFile")
+        node.label = 'EXR-MultiLayer'
+        node.base_path = self.GetOutputPathStr()
+        node.location = position
+        node.width = 300
+        node.width_hidden = 300
+        node.use_custom_color = True
+        node.color = (0.686, 0.204, 0.176)
+        return node
+
+
+    # links all outputs of the source node to inputs of the target node
+    def LinkRenderLayers(self, sourceNode, targetNode):
+        for out in sourceNode.outputs:
+            # skip disabled outputs
+            if (out.enabled == False):
+                continue
+            slot = 0
+            found = False
+            for src in targetNode.inputs:
+                if (src.identifier == out.identifier):
+                    # target node already has matching input, link to it
+                    found = True
+                    bpy.context.scene.node_tree.links.new(out, targetNode.inputs[slot])
+                    break
+                slot = slot + 1
+            if not found:
+                # target node has no matching input, create one and link to it
+                targetNode.file_slots.new(out.identifier)
+                bpy.context.scene.node_tree.links.new(out, targetNode.inputs[-1])
+
+
+    # Exr Auto Saver button
+    # Generates reqired nodes for the OpenEXR output and links available render passes
     def execute(self, context):
         scene = bpy.context.scene # get the scene
 
-        #If UseNode Checker Box is Off do Nothing!
-        if scene.use_nodes is False:
+        if not scene.use_nodes:
             print('Info: node_tree not in use. Skipping')
             return {'CANCELLED'}
-            
-        # If CheckerBox is On, clear all Compositor!
-        if scene.exr_auto_pass_saver_clear_all == True:
+
+        if scene.exr_auto_pass_saver_clear_all:
             self.cleannodes()
-            
-        # If CheckerBox is On, Open Folder!
-        if scene.exr_auto_pass_saver_open_dir == True:
+
+        if scene.exr_auto_pass_saver_open_dir:
             self.openfolder()
-        
-        scene.render.image_settings.file_format = 'OPEN_EXR_MULTILAYER'
-        
-        image_node = scene.node_tree.nodes.new('CompositorNodeRLayers')
-        RLayerPosition = 0,400
-        image_node.location = RLayerPosition
 
-
-        output_file = scene.node_tree.nodes.new("CompositorNodeOutputFile") # create save node
-        output_file.label = 'EXR-MultiLayer'
-
-        output_file.base_path = self.GetOutputPathStr()
-
-
-
-        output_file.location = RLayerPosition[0] + 400, RLayerPosition[1] + 50
-        output_file.width = 300
-        output_file.width_hidden = 300
- 
-        for out in image_node.outputs:     
-            if (out.enabled == False):
-                continue
-
-            slot = 0
-            found = False
-
-            for src in output_file.inputs:
-                if (src.identifier == out.identifier):
-                    found = True
-                    break
-                slot = slot + 1
-
-            if found == False:
-                output_file.file_slots.new(out.identifier)
-                scene.node_tree.links.new(out, output_file.inputs[-1])
-            else:
-                scene.node_tree.links.new(out, output_file.inputs[slot])
-
-
-        output_file.use_custom_color = True
-        output_file.color = (0.686, 0.204, 0.176)
+        layersNode = self.CreateNodeRenderLayers((0, 400))
+        outputNode = self.CreateNodeFileOutput((400, 450))
+        self.LinkRenderLayers(layersNode, outputNode)
         return {'FINISHED'}
 
 
@@ -122,16 +132,15 @@ class Exr_Auto_Pass_Saver_Panel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         layout.label(text="Link all nodes:")
+        # draw Auto Saver button
         row = layout.row()
         row.scale_y = 2.0
         row.operator(Exr_Auto_Pass_Saver.bl_idname, icon='TRACKING_FORWARDS')
-        
-        #layout.operator(Exr_Auto_Pass_Saver.bl_idname, icon='TRACKING_FORWARDS')
-        
         sce = context.scene
         # draw the checkbox (implied from property type = bool)
         layout.prop(sce, "exr_auto_pass_saver_clear_all") 
         layout.prop(sce, "exr_auto_pass_saver_open_dir") 
+
 
 classes = (Exr_Auto_Pass_Saver_Panel, Exr_Auto_Pass_Saver)
 
