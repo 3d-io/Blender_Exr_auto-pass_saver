@@ -15,5 +15,7 @@ They can be imported in Photoshop using Exr-IO importer.<br/>
 You can get the free Exr-IO Importer from<br/>
 www.exr-io.com<br/>
 
+![Photoshop preview of created Multilayer Exr Image](https://github.com/3d-io/Blender_Exr_auto-pass_saver/blob/master/images/exr_auto-pass_saver.gif)
+
 # Installation
 Drag and drop this python script into your Blender Addon folder.
