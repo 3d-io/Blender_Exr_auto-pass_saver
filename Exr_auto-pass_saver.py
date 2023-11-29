@@ -74,7 +74,6 @@ class Exr_Auto_Pass_Saver(bpy.types.Operator):
         node.base_path = self.GetOutputPathStr()
         node.location = position
         node.width = 300
-        node.width_hidden = 300
         node.use_custom_color = True
         node.color = (0.686, 0.204, 0.176)
         return node
